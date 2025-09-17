@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>STS Prototype — Admin/Tourist & SOS</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <!-- Leaflet (OpenStreetMap) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    :root{ --primary:#0fcef0; --accent:#ff6b6b; --bg:#f5f7fb; --card:#fff; --muted:#6b7280; --success:#16a34a; }
+    *{box-sizing:border-box}
+    body{font-family:'Roboto',sans-serif;margin:0;background:linear-gradient(180deg,#f7f9ff,#f5f7fb);color:#111827}
+    .topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;background:linear-gradient(90deg,var(--primary),#1463d4);color:white}
+    .brand{font-weight:700}
+    .app{display:flex;gap:18px;padding:18px;height:calc(100vh - 64px)}
+    .sidebar{width:240px;background:var(--card);border-radius:12px;padding:12px;box-shadow:0 8px 24px rgba(15,23,42,0.06)}
+    .nav-item{padding:10px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:8px}
+    .nav-item:hover{background:#f3f6ff}
+    .nav-item.active{background:linear-gradient(90deg,#ecf2ff,#f8fbff);border-left:4px solid var(--primary);padding-left:8px}
+    .main{flex:1;overflow:auto}
+    .card{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 8px 24px rgba(2,6,23,0.04);margin-bottom:12px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+    .stat h3{margin:0;font-size:22px}
+    .muted{color:var(--muted);font-size:13px}
+    .input{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9ef;background:#fff}
+    .btn{background:var(--primary);color:white;padding:10px 12px;border-radius:8px;border:none;cursor:pointer}
+    .btn-ghost{background:transparent;border:1px solid #e6e9ef;padding:8px;border-radius:8px;cursor:pointer}
+    .danger{background:#fff2f2;color:var(--accent);padding:6px;border-radius:999px}
+    .ok{background:#eefaf1;color:var(--success);padding:6px;border-radius:999px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px;border-bottom:1px solid #eef2f7;text-align:left}
+    th{font-weight:700;color:#334155}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,0.35);display:flex;align-items:center;justify-content:center;z-index:999}
+    .modal{width:880px;max-width:95%;background:var(--card);border-radius:12px;padding:16px;box-shadow:0 20px 80px rgba(2,6,23,0.3)}
+    #modal-map{height:320px;border-radius:8px}
+    .centered{display:flex;align-items:center;justify-content:center;height:calc(100vh - 64px)}
+    .login-card{width:420px}
+    .sos-btn{display:block;width:100%;padding:22px;border-radius:14px;font-size:20px;font-weight:700;border:none;background:linear-gradient(90deg,var(--accent),#ff5252);color:white;cursor:pointer}
+    .small{font-size:13px;color:var(--muted)}
+    .footer{color:var(--muted);text-align:center;padding:12px}
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div>
+      <div class="brand">Smart Tourist Safety — Prototype</div>
+      <div class="small">AI • Geo-fencing • Blockchain (mock)</div>
+    </div>
+    <div id="top-right" class="small">Demo</div>
+  </div>
+
+  <div id="screen-login" class="centered">
+    <div class="login-card card">
+      <h2 style="margin:0 0 8px 0">Sign in</h2>
+      <div class="small">Choose login type then sign in.</div>
+      <div style="display:flex;gap:8px;margin:12px 0 8px 0">
+        <button class="btn" onclick="chooseType('admin')">Administrator</button>
+        <button class="btn-ghost" onclick="chooseType('tourist')">Tourist</button>
+      </div>
+
+      <div id="login-form">
+        <input id="login-email" class="input" placeholder="Email" />
+        <input id="login-password" type="password" class="input" placeholder="Password" style="margin-top:8px"/>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn" onclick="login()">Login</button>
+          <button class="btn-ghost" onclick="demoFill()">Use demo / autofill</button>
+        </div>
+        <div class="small" style="margin-top:8px">Default admin: <strong>admin@sts.com</strong> / <strong>Admin@123</strong> (seeded once)</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen-app" style="display:none">
+    <div class="app">
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <div style="margin-bottom:12px">
+          <div style="font-weight:700" id="user-welcome">User</div>
+          <div class="small" id="user-role">Role</div>
+        </div>
+        <div id="nav">
+          <div class="nav-item active" data-page="home" onclick="nav('home')">Home</div>
+          <div class="nav-item" data-page="mydetails" onclick="nav('mydetails')">My Details</div>
+          <div class="nav-item" data-page="incidents" onclick="nav('incidents')">Incidents / SOS</div>
+          <div class="nav-item" data-page="map" onclick="nav('map')">Map (view)</div>
+          <div class="nav-item" data-page="admins" onclick="nav('admins')">Admin Settings</div>
+        </div>
+
+        <div style="margin-top:12px">
+          <button class="btn" onclick="logout()">Logout</button>
+        </div>
+      </div>
+
+      <!-- Main -->
+      <div class="main">
+        <!-- HOME (tourist: SOS button; admin: summary + SOS list) -->
+        <div id="page-home" class="page card">
+          <div id="home-content"></div>
+        </div>
+
+        <!-- My Details (tourist editable) -->
+        <div id="page-mydetails" class="page" style="display:none">
+          <div class="card">
+            <h3>My Details</h3>
+            <div class="small" style="margin-bottom:8px">Edit your profile (persisted locally)</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <input id="field-name" class="input" placeholder="Full name" />
+              <input id="field-age" class="input" placeholder="Age" />
+              <input id="field-phone" class="input" placeholder="Phone number" />
+              <input id="field-email" class="input" placeholder="Email" />
+              <input id="field-address" class="input" placeholder="Address" style="grid-column:1 / -1" />
+            </div>
+            <div style="margin-top:12px"><button class="btn" onclick="saveProfile()">Save</button></div>
+          </div>
+        </div>
+
+        <!-- Incidents / SOS listing (admin) -->
+        <div id="page-incidents" class="page" style="display:none">
+          <div class="card">
+            <h3>Active SOS Alerts</h3>
+            <div class="small" style="margin-bottom:8px">Tourists press SOS and appear here for admin action</div>
+            <table>
+              <thead><tr><th>SOS ID</th><th>Tourist</th><th>Time</th><th>Status</th><th>Action</th></tr></thead>
+              <tbody id="sos-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Map view (all incidents/tourists) -->
+        <div id="page-map" class="page" style="display:none">
+          <div class="card">
+            <h3>Map view</h3>
+            <div class="small">OpenStreetMap showing tourists and SOS pins</div>
+            <div id="map" style="height:480px;margin-top:10px;border-radius:10px"></div>
+          </div>
+        </div>
+
+        <!-- Admin Settings (manage admin accounts) -->
+        <div id="page-admins" class="page" style="display:none">
+          <div class="card">
+            <h3>Admin Accounts</h3>
+            <div class="small" style="margin-bottom:8px">Add / Edit / Remove administrator accounts (changes persist locally)</div>
+
+            <div style="display:flex;gap:8px;margin-bottom:8px">
+              <input id="new-admin-email" class="input" placeholder="email" />
+              <input id="new-admin-password" class="input" placeholder="password" />
+              <button class="btn" onclick="addAdmin()">Add Admin</button>
+            </div>
+
+            <div id="admins-list" style="margin-top:8px"></div>
+          </div>
+        </div>
+
+        <div class="footer">Prototype — data stored in browser localStorage. Replace with server & secure auth for production.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal root -->
+  <div id="modal-root" style="display:none"></div>
+
+<script>
+/* -------------------------
+   Data seeding & storage helpers
+   ------------------------- */
+const STORAGE_KEY = 'sts_prototype_v1';
+
+function seedIfNeeded(){
+  if(!localStorage.getItem(STORAGE_KEY)){
+    // default single admin
+    const seed = {
+      admins: [
+        { email:'admin@sts.com', password:'Admin@123', name:'Primary Admin' } // change if desired
+      ],
+      tourists: [
+        // sample tourist for demo
+        { id:'T1001', name:'Alice', age:28, phone:'', email:'alice@tourist.com', address:'', location:[37.7749,-122.4194] }
+      ],
+      sosAlerts: [] // { id, touristId, time, lat, lng, status, note }
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
+  }
+}
+function readStore(){ return JSON.parse(localStorage.getItem(STORAGE_KEY)); }
+function writeStore(obj){ localStorage.setItem(STORAGE_KEY, JSON.stringify(obj)); }
+
+/* Helper id generator */
+function uid(pref='id'){ return pref + '-' + Math.random().toString(36).slice(2,9); }
+
+/* Boot */
+seedIfNeeded();
+
+/* -------------------------
+   App state
+   ------------------------- */
+let chosenType = null; // 'admin' or 'tourist'
+let currentUser = null; // {role, email, adminIndex | touristId}
+let map = null;
+
+/* UI helpers */
+function chooseType(t){
+  chosenType = t;
+  alert('Selected: ' + t + '. Now enter credentials and press Login (Use demo autofill if needed).');
+}
+function demoFill(){
+  if(chosenType === 'admin'){
+    document.getElementById('login-email').value = 'admin@sts.com';
+    document.getElementById('login-password').value = 'Admin@123';
+  } else {
+    document.getElementById('login-email').value = 'guest@tourist.com';
+    document.getElementById('login-password').value = 'visitor';
+  }
+}
+
+/* Login flow */
+function login(){
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value.trim();
+  if(!chosenType){ alert('Choose Administrator or Tourist first.'); return; }
+  const store = readStore();
+
+  if(chosenType === 'admin'){
+    const idx = store.admins.findIndex(a => a.email.toLowerCase() === email.toLowerCase() && a.password === password);
+    if(idx === -1){ alert('Invalid admin credentials.'); return; }
+    currentUser = { role:'admin', email:store.admins[idx].email, adminIndex:idx, name:store.admins[idx].name || 'Admin' };
+    enterApp();
+  } else {
+    if(!email){ alert('Enter email to login/register as tourist.'); return; }
+    let t = store.tourists.find(x => x.email.toLowerCase() === email.toLowerCase());
+    if(!t){
+      // register simple tourist
+      t = { id: uid('T'), name: email.split('@')[0], age:'', phone:'', email, address:'', location:[37.7749 + Math.random()*0.02, -122.4194 + Math.random()*0.02] };
+      store.tourists.push(t);
+      writeStore(store);
+    }
+    currentUser = { role:'tourist', touristId:t.id, email:t.email, name:t.name };
+    enterApp();
+  }
+}
+
+/* Enter application UI */
+function enterApp(){
+  document.getElementById('screen-login').style.display = 'none';
+  document.getElementById('screen-app').style.display = 'block';
+  document.getElementById('user-welcome').textContent = currentUser.name || currentUser.email;
+  document.getElementById('user-role').textContent = currentUser.role === 'admin' ? 'Administrator' : 'Tourist';
+  // adjust nav visibility: Admins see Admin Settings and Incidents; tourists see only home + my details + map
+  const pages = ['home','mydetails','incidents','map','admins'];
+  pages.forEach(p => {
+    const el = document.querySelector(`.nav-item[data-page="${p}"]`);
+    if(!el) return;
+    if(currentUser.role === 'admin'){
+      el.style.display = 'flex';
+    } else {
+      // tourist: hide admin-only pages
+      if(p === 'incidents' || p === 'admins'){ el.style.display = 'none'; } else { el.style.display = 'flex'; }
+    }
+  });
+  // initial nav
+  nav('home');
+}
+
+/* Logout */
+function logout(){
+  chosenType = null; currentUser = null;
+  document.getElementById('screen-app').style.display = 'none';
+  document.getElementById('screen-login').style.display = 'flex';
+  // clear sensitive fields
+  document.getElementById('login-email').value=''; document.getElementById('login-password').value='';
+}
+
+/* Navigation */
+function nav(page){
+  // highlight nav
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const selected = document.querySelector(`.nav-item[data-page="${page}"]`);
+  if(selected) selected.classList.add('active');
+
+  // hide all pages
+  document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+  // show requested
+  const pageEl = document.getElementById('page-' + page);
+  if(pageEl) pageEl.style.display = 'block';
+
+  // populate content for page
+  if(page === 'home') renderHome();
+  if(page === 'mydetails') renderMyDetails();
+  if(page === 'incidents') renderSOSList();
+  if(page === 'map') renderMap();
+  if(page === 'admins') renderAdminSettings();
+}
+
+/* -------------------------
+   HOME PAGE
+   - Tourist: big SOS button
+   - Admin: summary + quick SOS list
+   ------------------------- */
+function renderHome(){
+  const container = document.getElementById('home-content');
+  container.innerHTML = '';
+
+  if(currentUser.role === 'tourist'){
+    // Tourist home: SOS button + small info
+    const div = document.createElement('div');
+    div.innerHTML = `
+      <h3>Emergency</h3>
+      <p class="small">Press the SOS button to alert administrators immediately.</p>
+      <div style="margin-top:12px">
+        <button class="sos-btn" onclick="sendSOS()">SOS — Send Emergency Alert</button>
+      </div>
+    `;
+    container.appendChild(div);
+  } else {
+    // Admin home: show quick stats + list of recent SOS
+    const store = readStore();
+    const totalTourists = store.tourists.length;
+    const totalSOS = store.sosAlerts.length;
+    const activeSOS = store.sosAlerts.filter(s => s.status === 'active').length;
+
+    const stats = document.createElement('div');
+    stats.className = 'grid';
+    stats.innerHTML = `
+      <div class="card stat"><div><h3>${totalTourists}</h3><div class="small">Registered tourists</div></div></div>
+      <div class="card stat"><div><h3>${totalSOS}</h3><div class="small">Total SOS alerts</div></div></div>
+      <div class="card stat"><div><h3>${activeSOS}</h3><div class="small">Active SOS</div></div></div>
+    `;
+    container.appendChild(stats);
+
+    const listCard = document.createElement('div');
+    listCard.className = 'card';
+    listCard.style.marginTop = '12px';
+    listCard.innerHTML = `<h3>Recent SOS (click to view)</h3><div id="home-sos-list" style="margin-top:8px"></div>`;
+    container.appendChild(listCard);
+    // render brief list
+    const target = listCard.querySelector('#home-sos-list');
+    const recent = store.sosAlerts.slice().reverse().slice(0,6);
+    target.innerHTML = recent.length ? recent.map(s => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid #eef2f7">
+        <div><strong>${s.id}</strong> — ${s.touristName} <div class="small">${new Date(s.time).toLocaleString()}</div></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-ghost" onclick="viewSOS('${s.id}')">View</button>
+          ${s.status === 'active' ? `<button class="btn" onclick="markSOSResolved('${s.id}')">Resolve</button>` : `<span class="ok">Resolved</span>`}
+        </div>
+      </div>
+    `).join('') : `<div class="small">No SOS alerts</div>`;
+  }
+}
+
+/* -------------------------
+   MY DETAILS page (tourist)
+   ------------------------- */
+function renderMyDetails(){
+  if(currentUser.role !== 'tourist') return;
+  const store = readStore();
+  const t = store.tourists.find(x => x.id === currentUser.touristId);
+  if(!t) return;
+  document.getElementById('field-name').value = t.name || '';
+  document.getElementById('field-age').value = t.age || '';
+  document.getElementById('field-phone').value = t.phone || '';
+  document.getElementById('field-email').value = t.email || '';
+  document.getElementById('field-address').value = t.address || '';
+}
+function saveProfile(){
+  const store = readStore();
+  const t = store.tourists.find(x => x.id === currentUser.touristId);
+  if(!t) return alert('Profile not found');
+  t.name = document.getElementById('field-name').value.trim();
+  t.age = document.getElementById('field-age').value.trim();
+  t.phone = document.getElementById('field-phone').value.trim();
+  t.email = document.getElementById('field-email').value.trim();
+  t.address = document.getElementById('field-address').value.trim();
+  writeStore(store);
+  currentUser.name = t.name;
+  document.getElementById('user-welcome').textContent = t.name;
+  alert('Profile saved locally');
+}
+
+/* -------------------------
+   SOS (tourist sends), Admin sees list, view modal
+   ------------------------- */
+function sendSOS(){
+  if(currentUser.role !== 'tourist') return alert('Only tourists can send SOS here.');
+  const store = readStore();
+  const t = store.tourists.find(x => x.id === currentUser.touristId);
+  if(!t) return alert('Profile missing');
+
+  // Get location if available (browser geolocation)
+  function createSOS(lat, lng){
+    const s = { id: uid('SOS'), touristId:t.id, touristName:t.name, time: Date.now(), lat, lng, status:'active', note:'' };
+    store.sosAlerts.push(s);
+    writeStore(store);
+    alert('SOS sent — administrators will see the alert.');
+  }
+
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos => createSOS(pos.coords.latitude, pos.coords.longitude),
+      err => {
+        // fallback to tourist's saved location
+        const loc = t.location || [37.7749, -122.4194];
+        createSOS(loc[0], loc[1]);
+      }, {timeout:8000});
+  } else {
+    const loc = t.location || [37.7749, -122.4194];
+    createSOS(loc[0], loc[1]);
+  }
+}
+
+/* Admin: view list of SOS */
+function renderSOSList(){
+  if(currentUser.role !== 'admin') return;
+  const store = readStore();
+  const tbody = document.getElementById('sos-table-body');
+  tbody.innerHTML = '';
+  const alerts = store.sosAlerts.slice().reverse();
+  alerts.forEach(s => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${s.id}</td>
+      <td>${s.touristName} (${s.touristId})</td>
+      <td>${new Date(s.time).toLocaleString()}</td>
+      <td>${s.status === 'active' ? '<span class="danger">Active</span>' : '<span class="ok">Resolved</span>'}</td>
+      <td>
+        <button class="btn-ghost" onclick="viewSOS('${s.id}')">View</button>
+        ${s.status === 'active' ? `<button class="btn" onclick="markSOSResolved('${s.id}')">Resolve</button>` : ''}
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+/* view SOS modal (shows tourist details + map) */
+function viewSOS(id){
+  const store = readStore();
+  const s = store.sosAlerts.find(x => x.id === id);
+  if(!s) return alert('SOS not found');
+  const t = store.tourists.find(tt => tt.id === s.touristId) || {};
+  const modalRoot = document.getElementById('modal-root');
+  modalRoot.style.display = 'block';
+  modalRoot.innerHTML = `
+    <div class="modal-backdrop" onclick="closeModal()">
+      <div class="modal" onclick="event.stopPropagation()">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-weight:700">${t.name || s.touristName} — <small style="color:#6b7280">${s.id}</small></div>
+            <div class="small">${t.email || ''} • ${t.phone || ''}</div>
+            <div class="small" style="margin-top:6px">${new Date(s.time).toLocaleString()}</div>
+          </div>
+          <div>
+            <button class="btn-ghost" onclick="closeModal()">Close</button>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:12px;margin-top:12px">
+          <div style="flex:1">
+            <h4 style="margin:0 0 8px 0">Tourist Details</h4>
+            <div class="small"><strong>Tourist ID:</strong> ${t.id || '-'}</div>
+            <div class="small"><strong>Age:</strong> ${t.age || '-'}</div>
+            <div class="small"><strong>Phone:</strong> ${t.phone || '-'}</div>
+            <div class="small"><strong>Address:</strong> ${t.address || '-'}</div>
+          </div>
+          <div style="flex:1">
+            <h4 style="margin:0 0 8px 0">Location</h4>
+            <div id="modal-map"></div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:12px">
+          ${s.status === 'active' ? `<button class="btn" onclick="markSOSResolved('${s.id}'); closeModal()">Mark Resolved</button>` : `<span class="ok">Resolved</span>`}
+          <button class="btn-ghost" onclick="closeModal()">Close</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // init small leaflet map after DOM inserted
+  setTimeout(() => {
+    const mapDiv = document.getElementById('modal-map');
+    if(mapDiv){
+      // clear previous leaflet instance if any (simple approach: give unique id)
+      mapDiv.innerHTML = '';
+      const m = L.map(mapDiv).setView([s.lat, s.lng], 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(m);
+      L.marker([s.lat, s.lng]).addTo(m).bindPopup(`${t.name || s.touristName}`).openPopup();
+    }
+  }, 50);
+}
+function closeModal(){ document.getElementById('modal-root').style.display = 'none'; document.getElementById('modal-root').innerHTML = ''; }
+
+/* mark SOS resolved */
+function markSOSResolved(id){
+  const store = readStore();
+  const s = store.sosAlerts.find(x => x.id === id);
+  if(!s) return alert('Not found');
+  s.status = 'resolved';
+  writeStore(store);
+  renderSOSList();
+  renderHome(); // update admin home quick list
+}
+
+/* -------------------------
+   MAP (global view)
+   ------------------------- */
+function renderMap(){
+  const store = readStore();
+  // initialize map if not yet
+  if(!map){
+    map = L.map('map').setView([37.7749, -122.4194], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+  } else {
+    // clear layers (simple approach - remove all and re-add tiles)
+    map.eachLayer(layer => {
+      if(layer && layer._url) return; // tile layer keep
+      try { map.removeLayer(layer); } catch(e){}
+    });
+  }
+
+  // add tourists
+  store.tourists.forEach(t => {
+    L.marker(t.location).addTo(map).bindPopup(`<b>${t.name}</b><br>${t.id}`);
+  });
+
+  // add SOS alerts
+  store.sosAlerts.forEach(s => {
+    const color = s.status === 'active' ? '#ff5252' : '#9ca3af';
+    L.circleMarker([s.lat,s.lng], { radius:8, color, fillColor:color, fillOpacity:0.8 }).addTo(map).bindPopup(`<b>${s.id}</b><br>${s.touristName}<br>${s.status}`);
+  });
+}
+
+/* -------------------------
+   ADMIN SETTINGS: manage admins
+   ------------------------- */
+function renderAdminSettings(){
+  const store = readStore();
+  const root = document.getElementById('admins-list');
+  root.innerHTML = '';
+  store.admins.forEach((a, idx) => {
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.style.marginBottom = '8px';
+    div.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:700">${a.name || a.email}</div>
+          <div class="small">${a.email}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn-ghost" onclick="editAdmin(${idx})">Edit</button>
+          <button class="btn" onclick="removeAdmin(${idx})">Remove</button>
+        </div>
+      </div>
+    `;
+    root.appendChild(div);
+  });
+}
+
+/* add new admin */
+function addAdmin(){
+  const email = document.getElementById('new-admin-email').value.trim();
+  const password = document.getElementById('new-admin-password').value.trim();
+  if(!email || !password) return alert('Enter email and password for admin');
+  const store = readStore();
+  if(store.admins.some(a => a.email.toLowerCase() === email.toLowerCase())) return alert('Admin exists');
+  store.admins.push({ email, password, name: email.split('@')[0] });
+  writeStore(store);
+  document.getElementById('new-admin-email').value=''; document.getElementById('new-admin-password').value='';
+  renderAdminSettings();
+}
+
+/* edit admin (inline simple prompt) */
+function editAdmin(idx){
+  const store = readStore();
+  const a = store.admins[idx];
+  const newEmail = prompt('Edit admin email:', a.email);
+  if(newEmail === null) return;
+  const newPass = prompt('Edit password (leave blank to keep current):','');
+  a.email = newEmail.trim() || a.email;
+  if(newPass) a.password = newPass;
+  writeStore(store);
+  renderAdminSettings();
+}
+
+/* remove admin */
+function removeAdmin(idx){
+  if(!confirm('Remove this admin?')) return;
+  const store = readStore();
+  store.admins.splice(idx,1);
+  writeStore(store);
+  renderAdminSettings();
+}
+
+/* -------------------------
+   Utility: render initial page if user manually navigates
+   ------------------------- */
+(function init(){
+  // nothing; waiting for login
+})();
+</script>
+</body>
+</html>
